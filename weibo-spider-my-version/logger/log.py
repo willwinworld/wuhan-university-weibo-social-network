@@ -13,7 +13,7 @@ log_config = {
     'version': 1.0,
     'formatters': {
         'detail': {
-            'format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            'format': 'ln:%(lineno)d - %(asctime)s - %(name)s - %(levelname)s - %(message)s',
             'datefmt': "%Y-%m-%d %H:%M:%S"
         },
         'simple': {

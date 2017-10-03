@@ -6,7 +6,7 @@ from datetime import datetime
 # db = SqliteDatabase('original_weibo_repost.sqlite')
 mysql_db = MySQLDatabase('wuhan',
                           user='root',
-                          password='1234',
+                          password='',
                           host='localhost',
                           charset='utf8mb4')
 mysql_db.connect()

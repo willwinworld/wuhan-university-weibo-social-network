@@ -41,9 +41,9 @@ def process_raw_data():
         crawler.warning(repost_content)
         repost_time = d('.WB_from.S_txt2').text()  # 转发时间
         crawler.warning(repost_time)
-        repost_list = re.findall(r'\d+', d('.WB_func.clearfix .WB_handle.W_fr .clearfix li:eq(1) .line.S_line1 .S_txt1').text())  # 转发数
         repost_num = 0
         upvote_num = 0
+        repost_list = re.findall(r'\d+', d('.WB_func.clearfix .WB_handle.W_fr .clearfix li:eq(1) .line.S_line1 .S_txt1').text())  # 转发数
         if len(repost_list) != 0:
             repost_num = repost_list[0]
         upvote_list = re.findall(r'\d+', d('.WB_func.clearfix .WB_handle.W_fr .clearfix li:eq(2) .line.S_line1 a span em:eq(1)').text())  # 点赞数
