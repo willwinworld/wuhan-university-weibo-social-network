@@ -1,245 +1,150 @@
-# -*-coding:utf-8 -*-
 import re
-import os
 import rsa
-import math
 import time
-import random
+import json
 import base64
+import logging
 import binascii
-from urllib.parse import quote_plus
 import requests
-from config import conf
-from headers import headers
-from db.redis_db import Cookies
-from utils import code_verification
-from page_parse.basic import is_403
-from logger.log import crawler, other
-from db.login_info import freeze_account
+import urllib.parse
 
 
-verify_code_path = './{}{}.png'
-index_url = "http://weibo.com/login.php"
-yundama_username = conf.get_code_username()
-yundama_password = conf.get_code_password()
-
-
-def get_pincode_url(pcid):
-    size = 0
-    url = "http://login.sina.com.cn/cgi/pin.php"
-    pincode_url = '{}?r={}&s={}&p={}'.format(url, math.floor(random.random() * 100000000), size, pcid)
-    return pincode_url
-
-
-def get_img(url, name, retry_count):
+class WeiBoLogin(object):
     """
-    :param url: url for verification code
-    :param name: login account
-    :param retry_count: retry number for getting verfication code
-    :return: 
+    class of WeiBoLogin, to login weibo.com
     """
-    pincode_name = verify_code_path.format(name, retry_count)
-    resp = requests.get(url, headers=headers, stream=True)
-    with open(pincode_name, 'wb') as f:
-        for chunk in resp.iter_content(1000):
-            f.write(chunk)
-    return pincode_name
+
+    def __init__(self):
+        """
+        constructor
+        """
+        self.user_name = None
+        self.pass_word = None
+        self.user_uniqueid = None
+        self.user_nick = None
+
+        self.session = requests.Session()
+        self.session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 6.3; WOW64; rv:41.0) Gecko/20100101 Firefox/41.0"})
+        self.session.get("http://weibo.com/login.php")
+        return
+
+    def login(self, user_name, pass_word):
+        """
+        login weibo.com, return True or False
+        """
+        self.user_name = user_name
+        self.pass_word = pass_word
+        self.user_uniqueid = None
+        self.user_nick = None
+
+        # get json data
+        s_user_name = self.get_username()
+        json_data = self.get_json_data(su_value=s_user_name)
+        if not json_data:
+            return False
+        s_pass_word = self.get_password(json_data["servertime"], json_data["nonce"], json_data["pubkey"])
+
+        # make post_data
+        post_data = {
+            "entry": "weibo",
+            "gateway": "1",
+            "from": "",
+            "savestate": "7",
+            "userticket": "1",
+            "vsnf": "1",
+            "service": "miniblog",
+            "encoding": "UTF-8",
+            "pwencode": "rsa2",
+            "sr": "1280*800",
+            "prelt": "529",
+            "url": "http://weibo.com/ajaxlogin.php?framelogin=1&callback=parent.sinaSSOController.feedBackUrlCallBack",
+            "rsakv": json_data["rsakv"],
+            "servertime": json_data["servertime"],
+            "nonce": json_data["nonce"],
+            "su": s_user_name,
+            "sp": s_pass_word,
+            "returntype": "TEXT",
+        }
+
+        # get captcha code
+        if json_data["showpin"] == 1:
+            url = "http://login.sina.com.cn/cgi/pin.php?r=%d&s=0&p=%s" % (int(time.time()), json_data["pcid"])
+            with open("captcha.jpeg", "wb") as file_out:
+                file_out.write(self.session.get(url).content)
+            code = input("请输入验证码:")
+            post_data["pcid"] = json_data["pcid"]
+            post_data["door"] = code
+
+        # login weibo.com
+        login_url_1 = "http://login.sina.com.cn/sso/login.php?client=ssologin.js(v1.4.18)&_=%d" % int(time.time())
+        json_data_1 = self.session.post(login_url_1, data=post_data).json()
+        if json_data_1["retcode"] == "0":
+            params = {
+                "callback": "sinaSSOController.callbackLoginStatus",
+                "client": "ssologin.js(v1.4.18)",
+                "ticket": json_data_1["ticket"],
+                "ssosavestate": int(time.time()),
+                "_": int(time.time()*1000),
+            }
+            response = self.session.get("https://passport.weibo.com/wbsso/login", params=params, verify=False)
+            json_data_2 = json.loads(re.search(r"\((?P<result>.*)\)", response.text).group("result"))
+            if json_data_2["result"] is True:
+                self.user_uniqueid = json_data_2["userinfo"]["uniqueid"]
+                self.user_nick = json_data_2["userinfo"]["displayname"]
+                logging.warning("WeiBoLogin succeed: %s", json_data_2)
+            else:
+                logging.warning("WeiBoLogin failed: %s", json_data_2)
+        else:
+            logging.warning("WeiBoLogin failed: %s", json_data_1)
+        return True if self.user_uniqueid and self.user_nick else False
+
+    def get_username(self):
+        """
+        get legal username
+        """
+        username_quote = urllib.parse.quote_plus(self.user_name)
+        username_base64 = base64.b64encode(username_quote.encode("utf-8"))
+        return username_base64.decode("utf-8")
+
+    def get_json_data(self, su_value):
+        """
+        get the value of "servertime", "nonce", "pubkey", "rsakv" and "showpin", etc
+        """
+        params = {
+            "entry": "weibo",
+            "callback": "sinaSSOController.preloginCallBack",
+            "rsakt": "mod",
+            "checkpin": "1",
+            "client": "ssologin.js(v1.4.18)",
+            "su": su_value,
+            "_": int(time.time()*1000),
+        }
+        try:
+            response = self.session.get("http://login.sina.com.cn/sso/prelogin.php", params=params)
+            json_data = json.loads(re.search(r"\((?P<data>.*)\)", response.text).group("data"))
+        except Exception as excep:
+            json_data = {}
+            logging.error("WeiBoLogin get_json_data error: %s", excep)
+
+        logging.debug("WeiBoLogin get_json_data: %s", json_data)
+        return json_data
+
+    def get_password(self, servertime, nonce, pubkey):
+        """
+        get legal password
+        """
+        string = (str(servertime) + "\t" + str(nonce) + "\n" + str(self.pass_word)).encode("utf-8")
+        public_key = rsa.PublicKey(int(pubkey, 16), int("10001", 16))
+        password = rsa.encrypt(string, public_key)
+        password = binascii.b2a_hex(password)
+        return password.decode()
 
 
-def get_encodename(name):
-    # name must be string
-    username_quote = quote_plus(str(name))
-    username_base64 = base64.b64encode(username_quote.encode("utf-8"))
-    return username_base64.decode("utf-8")
-
-
-# prelogin for servertime, nonce, pubkey, rsakv
-def get_server_data(su, session):
-    pre_url = "http://login.sina.com.cn/sso/prelogin.php?entry=weibo&callback=sinaSSOController.preloginCallBack&su="
-    pre_url = pre_url + su + "&rsakt=mod&checkpin=1&client=ssologin.js(v1.4.18)&_="
-    prelogin_url = pre_url + str(int(time.time() * 1000))
-    pre_data_res = session.get(prelogin_url, headers=headers)
-
-    sever_data = eval(pre_data_res.content.decode("utf-8").replace("sinaSSOController.preloginCallBack", ''))
-
-    return sever_data
-
-
-def get_password(password, servertime, nonce, pubkey):
-    rsa_publickey = int(pubkey, 16)
-    key = rsa.PublicKey(rsa_publickey, 65537)
-    message = str(servertime) + '\t' + str(nonce) + '\n' + str(password)
-    message = message.encode("utf-8")
-    passwd = rsa.encrypt(message, key)
-    passwd = binascii.b2a_hex(passwd)
-    return passwd
-
-
-# post data and get the next url
-def get_redirect(name, data, post_url, session):
-    logining_page = session.post(post_url, data=data, headers=headers)
-    login_loop = logining_page.content.decode("GBK")
-
-    # if name or password is wrong, set the value to 2
-    if 'retcode=101' in login_loop:
-        crawler.error('invalid password for {}, please ensure your account and password'.format(name))
-        freeze_account(name, 2)
-        return ''
-
-    if 'retcode=2070' in login_loop:
-        crawler.error('invalid verification code')
-        return 'pinerror'
-
-    if 'retcode=4049' in login_loop:
-        crawler.warning('account {} need verification for login'.format(name))
-        return 'login_need_pincode'
-
-    if '正在登录' in login_loop or 'Signing in' in login_loop:
-        pa = r'location\.replace\([\'"](.*?)[\'"]\)'
-        return re.findall(pa, login_loop)[0]
-    else:
-        return ''
-
-
-def login_no_pincode(name, password, session, server_data):
-    post_url = 'http://login.sina.com.cn/sso/login.php?client=ssologin.js(v1.4.18)'
-
-    servertime = server_data["servertime"]
-    nonce = server_data['nonce']
-    rsakv = server_data["rsakv"]
-    pubkey = server_data["pubkey"]
-    sp = get_password(password, servertime, nonce, pubkey)
-
-    data = {
-        'encoding': 'UTF-8',
-        'entry': 'weibo',
-        'from': '',
-        'gateway': '1',
-        'nonce': nonce,
-        'pagerefer': "",
-        'prelt': 67,
-        'pwencode': 'rsa2',
-        "returntype": "META",
-        'rsakv': rsakv,
-        'savestate': '7',
-        'servertime': servertime,
-        'service': 'miniblog',
-        'sp': sp,
-        'sr': '1920*1080',
-        'su': get_encodename(name),
-        'useticket': '1',
-        'vsnf': '1',
-        'url': 'http://weibo.com/ajaxlogin.php?framelogin=1&callback=parent.sinaSSOController.feedBackUrlCallBack'
-    }
-
-    rs = get_redirect(name, data, post_url, session)
-
-    return rs, None, '', session
-
-
-def login_by_pincode(name, password, session, server_data, retry_count):
-    post_url = 'http://login.sina.com.cn/sso/login.php?client=ssologin.js(v1.4.18)'
-
-    servertime = server_data["servertime"]
-    nonce = server_data['nonce']
-    rsakv = server_data["rsakv"]
-    pubkey = server_data["pubkey"]
-    pcid = server_data['pcid']
-
-    sp = get_password(password, servertime, nonce, pubkey)
-
-    data = {
-        'encoding': 'UTF-8',
-        'entry': 'weibo',
-        'from': '',
-        'gateway': '1',
-        'nonce': nonce,
-        'pagerefer': "",
-        'prelt': 67,
-        'pwencode': 'rsa2',
-        "returntype": "META",
-        'rsakv': rsakv,
-        'savestate': '7',
-        'servertime': servertime,
-        'service': 'miniblog',
-        'sp': sp,
-        'sr': '1920*1080',
-        'su': get_encodename(name),
-        'useticket': '1',
-        'vsnf': '1',
-        'url': 'http://weibo.com/ajaxlogin.php?framelogin=1&callback=parent.sinaSSOController.feedBackUrlCallBack',
-        'pcid': pcid
-    }
-
-    if not yundama_username:
-        raise Exception('login need verfication code, please set your yumdama info in config/spider.yaml')
-    img_url = get_pincode_url(pcid)
-    pincode_name = get_img(img_url, name, retry_count)
-    verify_code, yundama_obj, cid = code_verification.code_verificate(yundama_username, yundama_password,
-                                                                      pincode_name)
-    data['door'] = verify_code
-    rs = get_redirect(name, data, post_url, session)
-
-    os.remove(pincode_name)
-    return rs, yundama_obj, cid, session
-
-
-def login_retry(name, password, session, ydm_obj, cid, rs='pinerror', retry_count=0):
-    while rs == 'pinerror':
-        ydm_obj.report_error(cid)
-        retry_count += 1
-        session = requests.Session()
-        su = get_encodename(name)
-        server_data = get_server_data(su, session)
-        rs, yundama_obj, cid, session = login_by_pincode(name, password, session, server_data, retry_count)
-    return rs, ydm_obj, cid, session
-
-
-def do_login(name, password):
-    session = requests.Session()
-    su = get_encodename(name)
-    server_data = get_server_data(su, session)
-
-    if server_data['showpin']:
-        rs, yundama_obj, cid, session = login_by_pincode(name, password, session, server_data, 0)
-        if rs == 'pinerror':
-            rs, yundama_obj, cid, session = login_retry(name, password, session, yundama_obj, cid)
-
-    else:
-        rs, yundama_obj, cid, session = login_no_pincode(name, password, session, server_data)
-        if rs == 'login_need_pincode':
-            session = requests.Session()
-            su = get_encodename(name)
-            server_data = get_server_data(su, session)
-            rs, yundama_obj, cid, session = login_by_pincode(name, password, session, server_data, 0)
-
-            if rs == 'pinerror':
-                rs, yundama_obj, cid, session = login_retry(name, password, session, yundama_obj, cid)
-
-    return rs, yundama_obj, cid, session
-
-
-def get_session(name, password):
-    url, yundama_obj, cid, session = do_login(name, password)
-
-    if url != '':
-        rs_cont = session.get(url, headers=headers)
-        login_info = rs_cont.text
-
-        u_pattern = r'"uniqueid":"(.*)",'
-        m = re.search(u_pattern, login_info)
-        if m and m.group(1):
-            # check if account is valid
-            check_url = 'http://weibo.com/2671109275/about'
-            resp = session.get(check_url, headers=headers)
-
-            if is_403(resp.text):
-                other.error('account {} has been forbidden'.format(name))
-                freeze_account(name, 0)
-                return None
-            other.info('Login successful! The login account is {}'.format(name))
-            Cookies.store_cookies(name, session.cookies.get_dict())
-            return session
-         
-    other.error('login failed for {}'.format(name))
-    return None
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG, format="%(asctime)s\t%(levelname)s\t%(message)s")
+    weibo = WeiBoLogin()
+    weibo.login("784514713@qq.com", "infrequent11")
+    # weibo.login('13914732671', 'pachong')
+    pickle_cookie = weibo.session.cookies.get_dict()
+    with open('cookie.json', 'w') as f:
+        f.write(json.dumps(pickle_cookie))
