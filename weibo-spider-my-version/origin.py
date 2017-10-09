@@ -68,15 +68,12 @@ def save(page_one_current_page, page_one_raw_html, rest_res):
 
 def origin_combine():
     total_page, page_one_current_page, page_one_raw_html = send_start_request()
-    # print(total_page)
-    # print(page_one_current_page)
-    # print(page_one_raw_html)
     rest_res = send_rest_request(total_page)
     save(page_one_current_page, page_one_raw_html, rest_res)
 
 
-# if __name__ == '__main__':
-#     combine()
+if __name__ == '__main__':
+    origin_combine()
 
 
-__all__ = ['origin_combine']
+# __all__ = ['origin_combine']

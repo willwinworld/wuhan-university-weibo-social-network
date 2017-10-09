@@ -24,6 +24,7 @@ class Basic_Weibo(BaseModel):
     mid_id = BigIntegerField(null=True, verbose_name='评论mid')
     repost_html = TextField(null=True, verbose_name='单条评论的raw_html')
     repost_user_id = BigIntegerField(null=True, verbose_name='评论的用户id')
+    repost_user = CharField(null=True, verbose_name='评论用户名')
     repost_content = TextField(null=True, verbose_name='单条评论内容')
     repost_time = CharField(null=True, verbose_name='评论时间')
     repost_num = IntegerField(null=True, verbose_name='转发数')
