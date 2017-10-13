@@ -46,6 +46,7 @@ def pre_process():
                 upvote_num=row.upvote_num,
                 repost_path=str(row.mid_id),  # 方案一：先用mid->mid->的形式
                 is_crawl=False,
+                is_origin=True,
                 matrix=row.mid_id,
                 depth=0
             )
@@ -66,6 +67,7 @@ def pre_process():
                 upvote_num=row.upvote_num,
                 repost_path='0',  # 代表没有下一层了
                 is_crawl=False,
+                is_origin=True,
                 matrix=row.mid_id,
                 depth=0
             )
@@ -83,23 +85,24 @@ def resp_to_text(origin_mid, response):
     crawler.warning(response.content)
     crawler.warning("resp_to_text function")
     total_json_data = []
-    meta_json_data = json.loads(response.content)
-    total_json_data.append(meta_json_data)  # 第一页
-    total_page = meta_json_data['data']['page']['totalpage']
-    int_total_page = int(total_page)
-    crawler.warning('+++++++++++++>')
-    crawler.warning(int_total_page)
-    crawler.warning('+++++++++++++>')
-    if int_total_page != 1:
-        for page_num in range(2, int_total_page+1):
-            crawler.warning(page_num)
-            rest_repost_url = 'http://weibo.com/aj/v6/mblog/info/big?ajwvr=6&id={}&page={}'.format(origin_mid, page_num)
-            rest_resp = s.get(rest_repost_url, headers=headers, verify=False, cookies=cookie)
-            time.sleep(randint(2, 6))
-            rest_resp_content = json.loads(rest_resp.content)
-            total_json_data.append(rest_resp_content)  # 其它页
-            # break
-    return total_json_data
+    if len(response.content) > 100:
+        meta_json_data = json.loads(response.content)  # 报错
+        total_json_data.append(meta_json_data)  # 第一页
+        total_page = meta_json_data['data']['page']['totalpage']
+        int_total_page = int(total_page)
+        crawler.warning('+++++++++++++>')
+        crawler.warning(int_total_page)
+        crawler.warning('+++++++++++++>')
+        if int_total_page != 1:
+            for page_num in range(2, int_total_page+1):
+                crawler.warning(page_num)
+                rest_repost_url = 'http://weibo.com/aj/v6/mblog/info/big?ajwvr=6&id={}&page={}'.format(origin_mid, page_num)
+                rest_resp = s.get(rest_repost_url, headers=headers, verify=False, cookies=cookie)
+                time.sleep(randint(4, 8))
+                rest_resp_content = json.loads(rest_resp.content)
+                total_json_data.append(rest_resp_content)  # 其它页
+                # break
+        return total_json_data
 
 
 def split_the_text(origin_repost_path, total_json_data):
@@ -212,7 +215,7 @@ def recursive_fetch():
             rnd = int(time.time() * 1000)
             repost_url = 'https://weibo.com/aj/v6/mblog/info/big?ajwvr=6&id={}&__rnd={}'.format(origin_mid, rnd)
             response = s.get(repost_url, headers=headers, verify=False, cookies=cookie)
-            time.sleep(randint(2, 6))
+            time.sleep(randint(4, 8))
             """
             发过请求之后，立刻修改数据库状态
             """
@@ -243,6 +246,7 @@ def test_pre_process():
         upvote_num=target.upvote_num,
         repost_path=target.repost_path,
         is_crawl=target.is_crawl,
+        is_origin=target.is_origin,
         matrix=target.matrix,
         depth=target.depth
     )
@@ -273,6 +277,7 @@ def test_save(total_repost_data):
                 upvote_num=item['upvote_num'],
                 repost_path=item['repost_path'],
                 is_crawl=item['is_crawl'],
+                is_origin=False,
                 matrix=int(matrix),
                 depth=depth
             )
@@ -294,9 +299,9 @@ def test_save(total_repost_data):
 
 def test_recursive_fetch():
     """
-        退出条件，如果数据库中不存在转发且全部已经爬过了
-        :return:
-        """
+    退出条件，如果数据库中不存在转发且全部已经爬过了
+    :return:
+    """
     more_than_zero = Test_Complete_Weibo.select().where(Test_Complete_Weibo.repost_num > 0, Test_Complete_Weibo.is_crawl == False)
     crawler.warning('----------------------------------------------------------')
     crawler.warning(more_than_zero.count())
@@ -313,7 +318,7 @@ def test_recursive_fetch():
             rnd = int(time.time() * 1000)
             repost_url = 'https://weibo.com/aj/v6/mblog/info/big?ajwvr=6&id={}&__rnd={}'.format(origin_mid, rnd)
             response = s.get(repost_url, headers=headers, verify=False, cookies=cookie)
-            time.sleep(randint(2, 6))
+            time.sleep(randint(4, 8))
             """
             发过请求之后，立刻修改数据库状态
             """
@@ -326,12 +331,12 @@ def test_recursive_fetch():
             test_save(total_repost_data)
             #     break
             # break
-        return recursive_fetch()
+        return test_recursive_fetch()
 
 
 def combine():
-    test_recursive_fetch()
     # test_pre_process()
+    test_recursive_fetch()
     # pre_process()
     # recursive_fetch()
 

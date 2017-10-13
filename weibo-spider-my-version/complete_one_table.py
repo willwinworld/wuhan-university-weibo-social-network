@@ -8,6 +8,7 @@ from headers import headers
 from fnvhash import fnv1a_32
 from pyquery import PyQuery as Pq
 from peewee import IntegrityError
+from random import randint
 from db.basic import Basic_Weibo
 from db.complete_one_table import Complete_Weibo
 from logger.log import crawler, parser, other, storage
@@ -26,9 +27,13 @@ s = requests.Session()
 
 def pre_process():
     """
-    先将之前的没有深度路径的表转存到有深度的另一张表中
+    先删除Complete_Weibo中所有内容
+    再将之前的没有深度路径的表转存到有深度的另一张表中
     :return:
     """
+    query = Complete_Weibo.delete()
+    query.execute()
+
     for row in Basic_Weibo.select():
         if row.repost_num != 0:
             Complete_Weibo.create(
@@ -44,6 +49,7 @@ def pre_process():
                 upvote_num=row.upvote_num,
                 repost_path=str(row.mid_id),  # 方案一：先用mid->mid->的形式
                 is_crawl=False,
+                is_origin=True,
                 matrix=row.mid_id,
                 depth=0
             )
@@ -64,6 +70,7 @@ def pre_process():
                 upvote_num=row.upvote_num,
                 repost_path='0',  # 代表没有下一层了
                 is_crawl=False,
+                is_origin=True,
                 matrix=row.mid_id,
                 depth=0
             )
@@ -76,26 +83,33 @@ def resp_to_text(origin_mid, response):
     :param response:
     :return:
     """
-    crawler.warning("resp_to_test function")
+    crawler.warning("resp_to_text function")
     crawler.warning(origin_mid)
     crawler.warning(response.content)
-    crawler.warning("resp_to_test function")
+    crawler.warning("resp_to_text function")
     total_json_data = []
-    meta_json_data = json.loads(response.content)
-    total_json_data.append(meta_json_data)  # 第一页
-    total_page = meta_json_data['data']['page']['totalpage']
-    int_total_page = int(total_page)
-    crawler.warning(int_total_page)
-    if int_total_page != 1:
-        for page_num in range(2, int_total_page+1):
-            crawler.warning(page_num)
-            rest_repost_url = 'http://weibo.com/aj/v6/mblog/info/big?ajwvr=6&id={}&page={}'.format(origin_mid, page_num)
-            rest_resp = s.get(rest_repost_url, headers=headers, verify=False, cookies=cookie)
-            time.sleep(2)
-            rest_resp_content = json.loads(rest_resp.content)
-            total_json_data.append(rest_resp_content)  # 其它页
-            # break
-    return total_json_data
+    if len(response.content) > 100:
+        meta_json_data = json.loads(response.content)
+        total_json_data.append(meta_json_data)  # 第一页
+        total_page = meta_json_data['data']['page']['totalpage']
+        int_total_page = int(total_page)
+        crawler.warning('+++++++++++++>')
+        crawler.warning(int_total_page)
+        crawler.warning('+++++++++++++>')
+        if int_total_page != 1:
+            for page_num in range(2, int_total_page+1):
+                try:
+                    crawler.warning(page_num)
+                    rest_repost_url = 'http://weibo.com/aj/v6/mblog/info/big?ajwvr=6&id={}&page={}'.format(origin_mid, page_num)
+                    rest_resp = s.get(rest_repost_url, headers=headers, verify=False, cookies=cookie)
+                    time.sleep(randint(4, 11))
+                    rest_resp_content = json.loads(rest_resp.content)
+                    total_json_data.append(rest_resp_content)  # 其它页
+                    # break
+                except Exception as err:
+                    crawler.warning(err)
+                    continue
+        return total_json_data
 
 
 def split_the_text(origin_repost_path, total_json_data):
@@ -171,11 +185,13 @@ def save_repost_data(total_repost_data):
                 upvote_num=item['upvote_num'],
                 repost_path=item['repost_path'],
                 is_crawl=item['is_crawl'],
+                is_origin=False,
                 matrix=int(matrix),
                 depth=depth
             )
-            # crawler.warning('saving %s' % item['id'])
-            # Complete_Weibo.create(**item)
+            crawler.warning('$$$$$$$$$$$$$$')
+            crawler.warning('already saved!')
+            crawler.warning('$$$$$$$$$$$$$$')
         except IntegrityError as err:
             """
             可能存在本层与下一级的mid是一样的情况，这时为了展现树的层次关系，应该修改主键
@@ -200,34 +216,38 @@ def recursive_fetch():
     crawler.warning('----------------------------------------------------------')
     while more_than_zero:
         for row in more_than_zero:
-            origin_mid = row.mid_id
-            crawler.warning(origin_mid)
-            crawler.warning('@@@@@@@')
-            crawler.warning(row.repost_num)
-            crawler.warning('@@@@@@@')
-            repost_path = row.repost_path
-            crawler.warning(repost_path)
-            rnd = int(time.time() * 1000)
-            repost_url = 'https://weibo.com/aj/v6/mblog/info/big?ajwvr=6&id={}&__rnd={}'.format(origin_mid, rnd)
-            response = s.get(repost_url, headers=headers, verify=False, cookies=cookie)
-            time.sleep(2)
-            """
-            发过请求之后，立刻修改数据库状态
-            """
-            query = Complete_Weibo.update(is_crawl=True).where(Complete_Weibo.id == row.id)
-            query.execute()
-            total_json_data = resp_to_text(origin_mid, response)
-            total_repost_data = split_the_text(repost_path, total_json_data)
-            crawler.warning(total_json_data)
-            crawler.warning(total_repost_data)
-            save_repost_data(total_repost_data)
+            try:
+                origin_mid = row.mid_id
+                crawler.warning(origin_mid)
+                crawler.warning('@@@@@@@')
+                crawler.warning(row.repost_num)
+                crawler.warning('@@@@@@@')
+                repost_path = row.repost_path
+                crawler.warning(repost_path)
+                rnd = int(time.time() * 1000)
+                repost_url = 'https://weibo.com/aj/v6/mblog/info/big?ajwvr=6&id={}&__rnd={}'.format(origin_mid, rnd)
+                response = s.get(repost_url, headers=headers, verify=False, cookies=cookie)
+                time.sleep(randint(4, 11))
+                """
+                发过请求之后，立刻修改数据库状态
+                """
+                query = Complete_Weibo.update(is_crawl=True).where(Complete_Weibo.id == row.id)
+                query.execute()
+                total_json_data = resp_to_text(origin_mid, response)
+                total_repost_data = split_the_text(repost_path, total_json_data)
+                crawler.warning(total_json_data)
+                crawler.warning(total_repost_data)
+                save_repost_data(total_repost_data)
+            except Exception as err:
+                crawler.warning(err)
+                continue
         #     break
         # break
-            return recursive_fetch()
+        return recursive_fetch()
 
 
 def combine():
-    # pre_process()
+    pre_process()
     recursive_fetch()
 
 

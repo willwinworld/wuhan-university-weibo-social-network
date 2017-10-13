@@ -32,6 +32,7 @@ class Complete_Weibo(BaseModel):
 
     repost_path = TextField(null=True, verbose_name='转发消息的层次关系:mid->mid->mid')
     is_crawl = BooleanField(null=False, verbose_name='页面是否已经爬过了')
+    is_origin = BooleanField(null=False, verbose_name='是否为原微博')
 
     matrix = BigIntegerField(null=True, verbose_name='经过转发的微博的宿主微博')
     depth = IntegerField(null=True, verbose_name='转发深度')
