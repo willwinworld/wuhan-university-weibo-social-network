@@ -14,7 +14,7 @@ cookie 24小时过期
 base_url = 'https://weibo.com/aj/v6/mblog/info/big?ajwvr=6&id={}&max_id={}&page={}&__rnd={}'
 wei_bo_start_id = '4151542729073845'
 wei_bo_max_id = '4155177487146495'
-wei_bo_start_rnd = int(time.time() * 1000) # rnd是过期时间,会一直变化
+wei_bo_start_rnd = int(time.time() * 1000)  # rnd是过期时间,会一直变化
 with open('cookie.json', 'r') as f:
     cookie = json.loads(f.read())
 s = requests.Session()
@@ -60,8 +60,8 @@ def save(page_one_current_page, page_one_raw_html, rest_res):
     for single_res in total_res:
         try:
             Origin_Weibo.create(id=single_res['current_page'],
-                                         current_page=single_res['current_page'],
-                                         raw_html=single_res['raw_html'])
+                                current_page=single_res['current_page'],
+                                raw_html=single_res['raw_html'])
         except IntegrityError as err:
             crawler.warning(err)
 

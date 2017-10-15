@@ -34,7 +34,7 @@ cur_time = int(time.time() * 1000)
 
 class Comment(object):
     @classmethod
-    def page_one(cls):
+    def parse_page_one(cls):
         """
         获取评论第一页的内容，返回第一页的内容，还有总的页数
         :return:
@@ -51,5 +51,54 @@ class Comment(object):
         return total_page, current_page_num, page_one_raw_html
 
     @classmethod
-    def
+    def parse_page_rest(cls, total_page):
+        generate_url = []
+        int_total_page = int(total_page)
+        for i in range(2, int_total_page + 1):
+            generate_url.append(base_url.format(mid, max_mid, i, cur_time))
+            break
+        rest_res = []
+        for i in generate_url:
+            response = s.get(i, headers=headers, verify=False, cookies=cookie)
+            crawler.warning(i)
+            parse_able_data = json.loads(response.content)
+            current_page = parse_able_data['data']['page']['pagenum']
+            crawler.warning(current_page)
+            raw_html = parse_able_data['data']['html']
+            rest_res.append({'current_page': current_page, 'raw_html': raw_html})
+            break
+        return rest_res
+
+    @classmethod
+    def merge(cls, page_one_raw_html, rest_res):
+        total_raw_res = []
+        total_raw_res.insert(0, {'current_page': '1', 'raw_html': page_one_raw_html})
+        total_raw_res.extend(rest_res)
+        return total_raw_res
+
+    @classmethod
+    def parse_all(cls, total_raw_res):
+        for item in total_raw_res:
+            current_page = item['current_page']
+            raw_html = item['raw_html']
+            print(raw_html)
+            d = Pq(raw_html)
+            """
+                ->
+            map->
+                ->
+            """
+            
+            break
+
+    @staticmethod
+    def main():
+        total_page, current_page_num, page_one_raw_html = Comment.parse_page_one()
+        rest_res = Comment.parse_page_rest(total_page)
+        total_raw_res = Comment.merge(page_one_raw_html, rest_res)
+        Comment.parse_all(total_raw_res)
+
+
+if __name__ == '__main__':
+    Comment.main()
 
