@@ -1,8 +1,20 @@
 from functools import wraps
 
 
-def save_decorator(input_value):
+def save_decorator(tag):
 
-    def list_parser(func):
+    def decorator(func):
         @wraps(func)
-        def handle_error():
+        def wrapper(input_value):
+            if isinstance(input_value, list):
+                for item in input_value:
+                    print(tag, item)
+            else:
+                print(tag, input_value)
+        return wrapper
+
+    return decorator
+
+
+__all__ = [save_decorator]
+

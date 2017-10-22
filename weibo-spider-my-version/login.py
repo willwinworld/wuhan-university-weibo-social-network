@@ -143,8 +143,8 @@ class WeiBoLogin(object):
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG, format="%(asctime)s\t%(levelname)s\t%(message)s")
     weibo = WeiBoLogin()
-    # weibo.login("784514713@qq.com", "infrequent11")
-    weibo.login('13914732671', 'pachong')
+    weibo.login("784514713@qq.com", "infrequent11")
+    # weibo.login('13914732671', 'pachong')
     pickle_cookie = weibo.session.cookies.get_dict()
     with open('cookie.json', 'w') as f:
         f.write(json.dumps(pickle_cookie))

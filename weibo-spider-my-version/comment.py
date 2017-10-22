@@ -17,20 +17,11 @@ with open('cookie.json', 'r') as f:
     cookie = json.loads(f.read())
 s = requests.Session()
 
-
-# base_url = 'http://weibo.com/aj/v6/comment/big?ajwvr=6&id={}&page={}&__rnd={}'
-# another_url = '/aj/v6/comment/big?ajwvr=6&id=4151542729073845&root_comment_max_id=4154068584896369&root_comment_max_id_type=&root_comment_ext_param=&page=2&filter=all&sum_comment_number=15&filter_tips_before=0&from=singleWeiBo&__rnd=1507973354180'
 base_url = 'http://weibo.com/aj/v6/comment/big?ajwvr=6&id={}&root_comment_max_id={}&page={}&__rnd={}'
 
 mid = '4151542729073845'
 max_mid = '4154068584896369'
 cur_time = int(time.time() * 1000)
-
-
-# test_url = new_url.format(mid, max_mid, 1, cur_time)
-# response = s.get(test_url, headers=headers, verify=False, cookies=cookie)
-# test_data = response.content
-# print(test_data)
 
 
 class CommentParser(object):
@@ -61,7 +52,7 @@ class CommentParser(object):
         rest_res = []
         for i in generate_url:
             response = s.get(i, headers=headers, verify=False, cookies=cookie)
-            time.sleep(uniform(13, 19))
+            time.sleep(uniform(60, 80))
             crawler.warning(i)
             parse_able_data = json.loads(response.content)
             current_page = parse_able_data['data']['page']['pagenum']
@@ -100,7 +91,10 @@ class CommentParser(object):
                 result = {'id': comment_id, 'current_page': current_page, 'raw_html': raw_html,
                           'comment_id': comment_id, 'user_id': user_id, 'comment_content': comment_content,
                           'comment_time': comment_time, 'up_vote_num': up_vote_num}
-                Comment.create(**result)
+                try:
+                    Comment.create(**result)
+                except IntegrityError as err:
+                    crawler.warning(err)
             # break
 
     @staticmethod
