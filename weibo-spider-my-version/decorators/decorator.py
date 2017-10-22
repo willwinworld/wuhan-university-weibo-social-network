@@ -1,6 +1,8 @@
 from functools import wraps
 
 
-def parse_decorator(input_value):
+def save_decorator(input_value):
 
-    def
+    def list_parser(func):
+        @wraps(func)
+        def handle_error():
